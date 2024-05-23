@@ -1,0 +1,117 @@
+version: '3'
+services:
+  proxysql:
+    build:
+      context: "./bin/proxysql"
+    container_name: "proxysql"
+    restart: "always"
+    ports:
+      - "6032:6032"
+      - "6033:6033"
+    volumes:
+      - ./data/proxysql:/var/lib/proxysql
+      - ./logs/proxysql/log:/var/log/mysql
+      - ./config/proxysql/proxysql.cnf:/etc/proxysql.cnf
+    networks:
+      network:
+        ipv4_address: 192.168.0.50
+
+  mysql_master:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ${M_MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${M_MYSQL_DATABASE}
+      MYSQL_USER: ${M_MYSQL_USER}
+      MYSQL_PASSWORD: ${M_MYSQL_PASSWORD}
+    container_name: "mysql_master"
+    restart: "no"
+    ports:
+      - 3306:3306
+    volumes:
+      - ./config/initdb/:/docker-entrypoint-initdb.d
+      - ./config/master/mysql.conf.cnf:/etc/mysql/conf.d/mysql.conf.cnf
+      - ./data/master/:/var/lib/mysql
+    networks:
+      network:
+        ipv4_address: 192.168.0.51
+
+  mysql_slave1:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ${S1_MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${S1_MYSQL_DATABASE}
+      MYSQL_USER: ${S1_MYSQL_USER}
+      MYSQL_PASSWORD: ${S1_MYSQL_PASSWORD}
+    container_name: "mysql_slave1"
+    restart: "no"
+    ports:
+      - 4406:3306
+    depends_on:
+      - mysql_master
+    volumes:
+      - ./config/initdb/:/docker-entrypoint-initdb.d
+      - ./config/slave1/mysql.conf.cnf:/etc/mysql/conf.d/mysql.conf.cnf
+      - ./data/slave1/:/var/lib/mysql
+    networks:
+      network:
+        ipv4_address: 192.168.0.52
+
+  mysql_slave2:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ${S2_MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${S2_MYSQL_DATABASE}
+      MYSQL_USER: ${S2_MYSQL_USER}
+      MYSQL_PASSWORD: ${S2_MYSQL_PASSWORD}
+    container_name: "mysql_slave2"
+    restart: "no"
+    ports:
+      - 5506:3306
+    depends_on:
+      - mysql_master
+    volumes:
+      - ./config/initdb/:/docker-entrypoint-initdb.d
+      - ./config/slave2/mysql.conf.cnf:/etc/mysql/conf.d/mysql.conf.cnf
+      - ./data/slave2/:/var/lib/mysql
+    networks:
+      network:
+        ipv4_address: 192.168.0.53
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: "phpmyadmin"
+    ports:
+      - "8080:80"
+    environment:
+      PMA_HOSTS: mysql_master, mysql_slave1, mysql_slave2
+      PMA_PORTS: ${M_MYSQL_PORT}, ${S1_MYSQL_PORT}, ${S2_MYSQL_PORT}
+    links:
+      - mysql_master
+      - mysql_slave1
+      - mysql_slave2
+    networks:
+      network:
+        ipv4_address: 192.168.0.60
+
+  drupal:
+    image: drupal:apache-bookworm
+    ports:
+      - 80:80
+    volumes:
+      - /var/www/html/modules
+      - /var/www/html/profiles
+      - /var/www/html/themes
+      - /var/www/html/sites
+    restart: always
+    networks:
+      network:
+        ipv4_address: 192.168.0.61
+networks:
+  network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 192.168.0.0/24
+          gateway: 192.168.0.1
+
